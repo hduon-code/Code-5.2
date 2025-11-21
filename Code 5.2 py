@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Aug 21 20:28:03 2025
+
+@author: ericgelsomin
+"""
+import io
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.widgets import CheckButtons
+import statsmodels.formula.api as smf
+from statsmodels.iolib.summary2 import summary_col
+# from scipy.optimize import curve_fit
+#pyodide will work
+
+#%% Fitting regression
+a = 0.2
+b = 0.3
+sigma_error = .5
+
+rng = np.random.default_rng(1234)
+N = 20
+
+#%% Simulate data
+df = pd.DataFrame({'x': rng.uniform(1, 20, N),
+                   'error': rng.normal(0, sigma_error, N)}
+                  )
+
+df['y'] = a + df['x']*b + df['error']
+
+model = smf.ols(formula = 'y ~ 1 + x', data=df)
+results = model.fit()
+print(results.summary2())
+print(f"MSE of residuals: {results.mse_resid}")
+print(f"Simulated squared error of residuals: {sigma_error*sigma_error}")
+const, slope = results.params
+
+#%% Plot
+plt.scatter(df['x'], df['y'])
+plt.plot(df['x'], 
+         slope * df['x'] + const,
+         color='red',
+         linestyle='--', 
+         label=f'Regression Line: y = {slope:.2f}x + {const:.2f}')
+plt.legend()
+plt.xlabel("X-axis")
+plt.ylabel("Y-axis")
+plt.title("Scatter Plot of Fake Data")
+plt.show()
+
+#%% Confidence interval for standard errors
+N = 30
+a = 46.3
+b = 3
+sigma_error = 3.9
+
+N_sims = 100
+
+rng = np.random.default_rng(2345)
+x = rng.uniform(-1, 4, N)
+cover_68 = []
+cover_95 = []
+
+for i in range(0,N_sims):
+    df = pd.DataFrame({'x': x,
+                       'error': rng.normal(0, sigma_error, N)}
+                      )
+
+    df['y'] = a + df['x']*b + df['error']
+    results = smf.ols(formula = 'y ~ 1 + x', data=df).fit()
+    b_hat = results.params['x']
+    b_se = results.bse['x']
+    
+    within_1_SE = abs(b - b_hat) < b_se
+    within_2_SE = abs(b - b_hat) < 2*b_se
+    
+    cover_68.append(within_1_SE)
+    cover_95.append(within_2_SE)
+    
+print(f"Predicted 68% Coverage: Actual Coverage: {np.mean(cover_68):.1%}")    
+print(f"Predicted 95% Coverage: Actial Coverage: {np.mean(cover_95):.1%}")    
+
+#%% Graphing different lines
+
+data = """Week_beginning	Production     Busy    	Total_Production_Cost
+1/1/25	90000	1	56140
+1/8/25	92000	1	60549
+1/15/25	88000	1	59060
+1/22/25	102000	1	56394
+1/29/25	98000	1	55108
+2/5/25	100000	1	55183
+2/12/25	96000	1	64547
+2/19/25	98000	1	51210
+2/26/25	101000	1	49290
+3/5/25	99000	1	48844
+3/12/25	103000	1	60009
+3/19/25	107000	1	61544
+3/26/25	99000	1	67208
+4/2/25	98000	1	54091
+4/9/25	100000	1	51072
+4/16/25	99000	1	63339
+4/23/25	97000	1	52175
+4/30/25	95000	1	52783
+5/7/25	94000	1	47614
+5/14/25	92000	1	58742
+5/21/25	95000	1	61067
+5/28/25	91000	1	62193
+6/4/25	92000	1	56988
+6/11/25	89000	0	47245
+6/18/25	87000	0	43843
+6/25/25	86000	0	42402
+7/2/25	88000	0	44887
+7/9/25	85000	0	52723
+7/16/25	82000	0	52471
+7/23/25	70000	0	41207
+7/30/25	62000	0	35177
+8/6/25	66000	0	44332
+8/13/25	64000	0	41851
+8/20/25	50000	0	31317
+8/27/25	52000	0	32627
+9/3/25	58000	0	38741
+9/10/25	56000	0	30732
+9/17/25	53000	0	28241
+9/24/25	49000	0	34195
+10/1/25	40000	0	28026
+10/8/25	42000	0	30950
+10/15/25	41000	0	27139
+10/22/25	39000	0	28393
+10/29/25	40000	0	24645
+11/5/25	38000	0	27353
+11/12/25	39000	0	25071
+11/19/25	40000	0	24556
+11/26/25	45000	0	27926
+12/3/25	47000	0	29237
+12/10/25	52000	0	30035
+12/17/25	66000	0	40261
+12/24/25	75000	0	46530"""
+
+df = pd.read_csv(io.StringIO(data), sep=r'\s+')
+df['ln_Total_Production_Cost'] = np.log(df['Total_Production_Cost'])
+
+# Run models
+x = np.arange(0,130000,1000)
+new_busy = pd.DataFrame({'Production': x,
+                         'Busy': 1})
+new_notbusy = pd.DataFrame({'Production': x,
+                            'Busy': 0})
+
+linear = smf.ols(formula = 'Total_Production_Cost ~ 1 + Production', data=df).fit()
+linear_fitted = linear.predict(new_busy)
+
+intercept = smf.ols(formula = 'Total_Production_Cost ~ 1 + Production + Busy', data=df).fit()
+intercept_busy_fitted = intercept.predict(new_busy)
+intercept_not_busy_fitted = intercept.predict(new_notbusy)
+
+interaction = smf.ols(formula = 'Total_Production_Cost ~ 1 + Production*Busy', data=df).fit()
+interaction_busy_fitted = interaction.predict(new_busy)
+interaction_not_busy_fitted = interaction.predict(new_notbusy)
+
+squared = smf.ols(formula = 'Total_Production_Cost ~ 1 + Production + I(Production**2)', data=df).fit()
+squared_fitted = squared.predict(new_busy)
+
+log_lin = smf.ols(formula = 'ln_Total_Production_Cost ~ 1 + Production', data=df).fit()
+log_lin_fitted = log_lin.predict(new_busy)
+
+summ_table = summary_col([linear, intercept, interaction, squared, log_lin],
+                    float_format="%0.2f",
+                    model_names=['Model ' + str(i) for i in range(1,6)],
+                    info_dict={'N':lambda x: f"{int(x.nobs)}"})
+print(summ_table)
+
+# 2. Create the main plot
+fig, ax = plt.subplots(figsize=(13, 7))
+plt.subplots_adjust(left=0.1, right=0.6) 
+
+ax.scatter(df.loc[df['Busy'] == 0, 'Production'],
+            df.loc[df['Busy'] == 0, 'Total_Production_Cost'], c='black')
+ax.scatter(df.loc[df['Busy'] == 1, 'Production'],
+            df.loc[df['Busy'] == 1, 'Total_Production_Cost'], c='green')
+
+# Plot the lines and store the line objects
+
+line_linear, = ax.plot(new_busy['Production'], 
+                       linear_fitted,
+                       color='red',
+                       linestyle='--', 
+                       label='Cost = 1 + Prod')
+line_intercept_busy, = ax.plot(new_busy['Production'], 
+                               intercept_busy_fitted,
+                               color='green',
+                               linestyle='--', 
+                               label='Cost = 1 + Prod + Busy | Busy')
+line_intercept_not_busy, = ax.plot(new_notbusy['Production'], 
+                                   intercept_not_busy_fitted,
+                                   color='blue',
+                                   linestyle='--', 
+                                   label='Cost = 1 + Prod + Busy | Not Busy')
+line_interaction_busy, = ax.plot(new_busy['Production'], 
+                                 interaction_busy_fitted,
+                                 color='green',
+                                 linestyle='--', 
+                                 label='Cost = 1 + Prod + Busy + Prod*Busy | Busy')
+line_interaction_not_bust, = ax.plot(new_notbusy['Production'], 
+                                     interaction_not_busy_fitted,
+                                     color='blue',
+                                     linestyle='--', 
+                                     label='Cost = 1 + Prod + Busy + Prod*Busy | Not Busy')
+line_squared, = ax.plot(new_notbusy['Production'], 
+                        squared_fitted,
+                        color='orange',
+                        linestyle='--', 
+                        label='Cost = 1 + prod + Prod*Prod')
+line_log_lin, = ax.plot(new_notbusy['Production'], 
+                        np.exp(log_lin_fitted),
+                        color='black',
+                        linestyle='--', 
+                        label='ln(Cost) = 1 + Prod')
+
+# Add labels and a title
+ax.set_title('Predicted Production Cost by Model')
+ax.set_xlabel('Production (Units)')
+ax.set_ylabel('Cost (USD)')
+ax.grid(True)
+
+# Create a dictionary to map labels to line objects
+lines_by_label = {'Cost = 1 + Prod': line_linear,
+                  'Cost = 1 + Prod + Busy | Busy': line_intercept_busy,
+                  'Cost = 1 + Prod + Busy | Not Busy': line_intercept_not_busy,
+                  'Cost = 1 + Prod + Busy + Prod*Busy | Busy': line_interaction_busy,
+                  'Cost = 1 + Prod + Busy + Prod*Busy | Not Busy': line_interaction_not_bust,
+                  'Cost = 1 + prod + Prod*Prod': line_squared,
+                  'ln(Cost) = 1 + Prod': line_log_lin
+                  }
+
+# 3. Create the axes for the checkboxes
+# The list [left, bottom, width, height] defines the position
+rax = plt.axes([0.62, 0.4, 0.36, 0.2])
+
+# Get the labels and visibility states from the plotted lines
+labels = [str(line.get_label()) for line in lines_by_label.values()]
+visibility = [line.get_visible() for line in lines_by_label.values()]
+line_colors = [line.get_color() for line in lines_by_label.values()]
+
+# 4. Create the CheckButtons widget
+check = CheckButtons(ax = rax, 
+                     labels = labels, 
+                     actives = visibility,
+                     label_props={'color': line_colors},)
+
+# 5. Define the function to be called when a checkbox is clicked
+def update(label):
+    """
+    This function is called when a checkbox is clicked.
+    It toggles the visibility of the corresponding line.
+    """
+    line = lines_by_label[label]
+    line.set_visible(not line.get_visible())
+    # Redraw the figure to show the changes
+    plt.draw()
+
+# 6. Connect the update function to the widget
+check.on_clicked(update)
+
+# 7. Show the plot
+plt.show()
+  
